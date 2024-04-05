@@ -11,12 +11,12 @@ using DataFrames, Dates, PlotlyBase, PlotlyKaleido
 using StatsPlots; plotly()
 
 # ╔═╡ a6e047c7-bbd8-4189-9c92-85d127131aaa
-function tilgungsplan(
+function tilgungsplan(;
 			creditsum,
 			nominalinterest_percent,
 			monthly_rate,
 			extra_repayment,
-			waittime_year,
+			extra_repayment_waittime_years,
 			runtime_months)
 	remaining_debt = creditsum
 	interest_year_percent = nominalinterest_percent / 100
@@ -39,7 +39,7 @@ function tilgungsplan(
 		curr_year = ((month - 1) ÷ 12) + 1  # which year we are in
 		
 		# 
-		if month % 12 == 0 && curr_year > waittime_year
+		if month % 12 == 0 && curr_year > extra_repayment_waittime_years
 			extra_repayment_corr = min(
 									extra_repayment,
 									remaining_debt - amortization
@@ -72,7 +72,10 @@ function tilgungsplan(
 				"restschuld" => remaining_debts,
 	)
 
-	df[!, "zahlung"] = df[!, "tilgung"] + df[!, "zinsen"]
+	df[!, "zahlung"] = df[!, "sondertilgung"] + df[!, "tilgung"] + df[!, "zinsen"]
+	df[!, "zahlung_cumsum"] = cumsum(df[!, "zahlung"])
+	
+	df[!, "zinsen_cumsum"] = cumsum(df[!, "zinsen"])
 	
 	df[!, "datum"] = Date.(
 						2024 .+ df[!, "year"],
@@ -83,22 +86,37 @@ function tilgungsplan(
 end;
 
 # ╔═╡ ce5eadfa-6e55-42f8-8717-542fbbf636da
-tp = tilgungsplan(300000, 3.5, 1500, 0, 0, 360)
+tp = tilgungsplan(
+		creditsum=500000,
+		nominalinterest_percent=3.7,
+		monthly_rate=1800,
+		extra_repayment=10000,
+		extra_repayment_waittime_years=0,
+		runtime_months=360,
+)
 
 # ╔═╡ 8ea75ae7-4483-4ce0-9051-f47610f04829
-@df tp Plots.plot(:datum, :restschuld, yformatter=:plain)
+begin
+	@df tp Plots.plot(
+						:datum,
+						:restschuld,
+						label="Remaining_debt",
+						legend=:top,
+						yformatter=:plain,
+	)
+	
+	@df tp Plots.plot!(:datum, :zahlung_cumsum, label="Payed")
+	@df tp Plots.plot!(:datum, :zinsen_cumsum, label="Interests")
+end
 
-# ╔═╡ 5bd5c23d-b710-429a-8f68-7da5a9219740
-sum(tp[!, :zahlung] + tp[!, :sondertilgung])
+# ╔═╡ 52dd43ed-3c54-4320-9b77-e794f135b79c
+maximum(tp.month)
 
 # ╔═╡ 43989a94-71a7-422a-911b-57b4d45e4a44
 maximum(tp.year)
 
 # ╔═╡ 15699d43-b89a-48bc-ab4a-82d8edfc704d
 maximum(tp.datum)
-
-# ╔═╡ 52dd43ed-3c54-4320-9b77-e794f135b79c
-maximum(tp.month)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1572,7 +1590,6 @@ version = "1.4.1+1"
 # ╠═a6e047c7-bbd8-4189-9c92-85d127131aaa
 # ╠═ce5eadfa-6e55-42f8-8717-542fbbf636da
 # ╠═8ea75ae7-4483-4ce0-9051-f47610f04829
-# ╠═5bd5c23d-b710-429a-8f68-7da5a9219740
 # ╠═52dd43ed-3c54-4320-9b77-e794f135b79c
 # ╠═43989a94-71a7-422a-911b-57b4d45e4a44
 # ╠═15699d43-b89a-48bc-ab4a-82d8edfc704d
