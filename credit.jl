@@ -11,7 +11,7 @@ using DataFrames, Dates, PlotlyBase, PlotlyKaleido
 using StatsPlots; plotly()
 
 # ╔═╡ a6e047c7-bbd8-4189-9c92-85d127131aaa
-function tilgungsplan(;
+function amortization_schedule(;
 			creditsum,
 			nominalinterest_percent,
 			monthly_rate,
@@ -21,12 +21,14 @@ function tilgungsplan(;
 	remaining_debt = creditsum
 	interest_year_percent = nominalinterest_percent / 100
 
-	months = []
-	years = []
-	zinsens = []
-	tilgungs = []
-	stilgungs = []
-	remaining_debts = []
+	data_columns = Dict(
+		"month" => [],
+		"year" => [],
+		"interest" => [],
+		"amortization_rate" => [],
+		"extra_repayment" => [],
+		"remaining_debt" => [],
+	)
 	
 	for month in 1:runtime_months
 		# Interest to pay for current month
@@ -51,33 +53,26 @@ function tilgungsplan(;
 		# Calculate new debt
 		remaining_debt -= amortization + extra_repayment_corr
 		 
-		# Fill dataframe
-		push!(months, month)
-		push!(years, curr_year)
-		push!(zinsens, round(interest_current_month))
-		push!(tilgungs, round(amortization))
-		push!(stilgungs, round(extra_repayment_corr))
-		push!(remaining_debts, round(remaining_debt))
+		# Fill data columns
+		push!(data_columns["month"], month)
+		push!(data_columns["year"], curr_year)
+		push!(data_columns["interest"], round(interest_current_month))
+		push!(data_columns["amortization_rate"], round(amortization))
+		push!(data_columns["extra_repayment"], round(extra_repayment_corr))
+		push!(data_columns["remaining_debt"], round(remaining_debt))
 
 		# Leave for-loop when remaining debt equals zero
 		iszero(round(remaining_debt)) && break
 	end
 	
-	df = DataFrame(
-				"month" => months,
-				"year" => years,
-				"zinsen" => zinsens,
-				"tilgung" => tilgungs,
-				"sondertilgung" => stilgungs,
-				"restschuld" => remaining_debts,
-	)
+	df = DataFrame(data_columns)
 
-	df[!, "zahlung"] = df[!, "sondertilgung"] + df[!, "tilgung"] + df[!, "zinsen"]
-	df[!, "zahlung_cumsum"] = cumsum(df[!, "zahlung"])
+	df[!, "payment"] = df[!, "extra_repayment"] + df[!, "amortization_rate"] + df[!, "interest"]
 	
-	df[!, "zinsen_cumsum"] = cumsum(df[!, "zinsen"])
+	df[!, "payment_cumsum"] = cumsum(df[!, "payment"])	
+	df[!, "interest_cumsum"] = cumsum(df[!, "interest"])
 	
-	df[!, "datum"] = Date.(
+	df[!, "date"] = Date.(
 						2024 .+ df[!, "year"],
 						((df[!, "month"] .- 1) .% 12) .+ 1
 	)
@@ -86,7 +81,7 @@ function tilgungsplan(;
 end;
 
 # ╔═╡ ce5eadfa-6e55-42f8-8717-542fbbf636da
-tp = tilgungsplan(
+df = amortization_schedule(
 		creditsum=500000,
 		nominalinterest_percent=3.7,
 		monthly_rate=1800,
@@ -97,26 +92,36 @@ tp = tilgungsplan(
 
 # ╔═╡ 8ea75ae7-4483-4ce0-9051-f47610f04829
 begin
-	@df tp Plots.plot(
-						:datum,
-						:restschuld,
+	@df df Plots.plot(
+						:date,
+						:remaining_debt,
 						label="Remaining_debt",
 						legend=:top,
 						yformatter=:plain,
 	)
 	
-	@df tp Plots.plot!(:datum, :zahlung_cumsum, label="Payed")
-	@df tp Plots.plot!(:datum, :zinsen_cumsum, label="Interests")
+	@df df Plots.plot!(:date, :payment_cumsum, label="Payed")
+	@df df Plots.plot!(:date, :interest_cumsum, label="Interests")
 end
 
-# ╔═╡ 52dd43ed-3c54-4320-9b77-e794f135b79c
-maximum(tp.month)
+# ╔═╡ 2421d2cb-384c-4928-9e21-b9bf215f5661
+begin
+	@df df Plots.plot(
+						:date,
+						:payment,
+						label="Payment",
+						legend=:top,
+						yformatter=:plain,
+	)
+	
+	@df df Plots.plot!(:date, :interest, label="Interest")
+	@df df Plots.plot!(:date, :amortization_rate, label="amortization")
+end
 
-# ╔═╡ 43989a94-71a7-422a-911b-57b4d45e4a44
-maximum(tp.year)
-
-# ╔═╡ 15699d43-b89a-48bc-ab4a-82d8edfc704d
-maximum(tp.datum)
+# ╔═╡ 574f33fd-48f6-4c69-b688-7dae8c549631
+md"""
+Debt paid after $(maximum(df.month)) months after $(maximum(df.year)) years on $(maximum(df.date)).
+"""
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1589,9 +1594,8 @@ version = "1.4.1+1"
 # ╠═aca7c180-f1f3-11ee-1836-996a32d74f59
 # ╠═a6e047c7-bbd8-4189-9c92-85d127131aaa
 # ╠═ce5eadfa-6e55-42f8-8717-542fbbf636da
+# ╟─574f33fd-48f6-4c69-b688-7dae8c549631
 # ╠═8ea75ae7-4483-4ce0-9051-f47610f04829
-# ╠═52dd43ed-3c54-4320-9b77-e794f135b79c
-# ╠═43989a94-71a7-422a-911b-57b4d45e4a44
-# ╠═15699d43-b89a-48bc-ab4a-82d8edfc704d
+# ╠═2421d2cb-384c-4928-9e21-b9bf215f5661
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
