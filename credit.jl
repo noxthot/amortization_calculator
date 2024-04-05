@@ -17,7 +17,7 @@ function amortization_schedule(;
 			monthly_rate,
 			extra_repayment,
 			extra_repayment_waittime_years,
-			runtime_months)
+	)
 	remaining_debt = creditsum
 	interest_year_percent = nominalinterest_percent / 100
 
@@ -29,8 +29,10 @@ function amortization_schedule(;
 		"extra_repayment" => [],
 		"remaining_debt" => [],
 	)
+
+	max_runtime_months = 12 * 100  # Should not be reached
 	
-	for month in 1:runtime_months
+	for month in 1:max_runtime_months
 		# Interest to pay for current month
 		interest_current_month = remaining_debt * interest_year_percent / 12
 		
@@ -83,12 +85,16 @@ end;
 # ╔═╡ ce5eadfa-6e55-42f8-8717-542fbbf636da
 df = amortization_schedule(
 		creditsum=500000,
-		nominalinterest_percent=3.7,
+		nominalinterest_percent=3.5,
 		monthly_rate=1800,
-		extra_repayment=10000,
+		extra_repayment=5000,
 		extra_repayment_waittime_years=0,
-		runtime_months=360,
 )
+
+# ╔═╡ 574f33fd-48f6-4c69-b688-7dae8c549631
+md"""
+Debt paid after $(maximum(df.month)) months after $(maximum(df.year)) years on $(maximum(df.date)).
+"""
 
 # ╔═╡ 8ea75ae7-4483-4ce0-9051-f47610f04829
 begin
@@ -117,11 +123,6 @@ begin
 	@df df Plots.plot!(:date, :interest, label="Interest")
 	@df df Plots.plot!(:date, :amortization_rate, label="amortization")
 end
-
-# ╔═╡ 574f33fd-48f6-4c69-b688-7dae8c549631
-md"""
-Debt paid after $(maximum(df.month)) months after $(maximum(df.year)) years on $(maximum(df.date)).
-"""
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
