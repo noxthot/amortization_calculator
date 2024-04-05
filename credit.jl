@@ -5,126 +5,100 @@ using Markdown
 using InteractiveUtils
 
 # ╔═╡ 10e28906-bd79-4620-b863-5b53748a0b31
-using DataFrames, Dates, PlotlyBase
+using DataFrames, Dates, PlotlyBase, PlotlyKaleido
 
 # ╔═╡ aca7c180-f1f3-11ee-1836-996a32d74f59
 using StatsPlots; plotly()
 
-# ╔═╡ 6064c8bb-fdde-44e5-bf98-27bb1087bfe6
-begin
-	credit_sum = 360000
-	annual_interest = 3.7
-end
-
 # ╔═╡ a6e047c7-bbd8-4189-9c92-85d127131aaa
-begin
-	function calc_yearly_annuity(
+function tilgungsplan(
 			creditsum,
 			nominalinterest_percent,
-			repaymentrate_percent)
-	    zinssatz = nominalinterest_percent / 100
-	    tilgung = repaymentrate_percent / 100
+			monthly_rate,
+			extra_repayment,
+			waittime_year,
+			runtime_months)
+	remaining_debt = creditsum
+	interest_year_percent = nominalinterest_percent / 100
+
+	months = []
+	years = []
+	zinsens = []
+	tilgungs = []
+	stilgungs = []
+	remaining_debts = []
+	
+	for month in 1:runtime_months
+		# Interest to pay for current month
+		interest_current_month = remaining_debt * interest_year_percent / 12
 		
-	    return creditsum * (zinssatz + tilgung)
-	end
-
-
-	function calc_monthly_annuity(
-				creditsum,
-				nominalinterest_percent,
-				repaymentrate_percent)
-    		return calc_yearly_annuity(creditsum, nominalinterest_percent, repaymentrate_percent) / 12
-	end
-    
-    function tilgungsplan(
-				creditsum,
-				nominalinterest_percent,
-				monthly_rate,
-				sondert,
-			    wartezeit,
-			    runtime_months)
-	    restschuld = creditsum
-	    interest_year = nominalinterest_percent / 100
-	
-		months = []
-		years = []
-		anfangsschulds = []
-		zinsens = []
-		tilgungs = []
-		stilgungs = []
-		restschulds = []
-	    
-	    for j in 1:runtime_months
-	        # Split der Annuität in ihre Komponenten Zinslast und Tilgung
-	        interest_remaining_depth_month = restschuld * interest_year / 12
-			
-	        # Wenn Restschuld kleiner Annuität, dann wird die komplette 
-	        # Restschuld getilgt
-	        amortization = (restschuld < monthly_rate) ? restschuld : monthly_rate - interest_remaining_depth_month    
-	
-	        anfangsschuld = restschuld
-	        jahr = ((j-1) ÷ 12) + 1 # in welchem Monat befinden wir uns
-	        
-	        # Sondertilgungen im Dezember eines Jahres, wenn wir 
-	        # nicht in der Wartezeit sind
-	        if j % 12 == 0 && anfangsschuld > 0 && jahr > wartezeit
-	            sondertilgung = min(sondert, restschuld - amortization)
-	        else
-	            sondertilgung = 0
-			end
-	
-	        # Restschuld_neu = Restschuld_alt minus Tilgung minus Sondertilgung
-	        restschuld = restschuld - amortization - sondertilgung
-	         
-	        # Dataframe befüllen
-			push!(months, j)
-			push!(years, jahr)
-			push!(anfangsschulds, anfangsschuld)
-			push!(zinsens, interest_remaining_depth_month)
-			push!(tilgungs, amortization)
-			push!(stilgungs, sondertilgung)
-			push!(restschulds, restschuld)
+		# payment rate
+		payment_rate = min(remaining_debt, monthly_rate)
+		amortization = payment_rate - interest_current_month
+		
+		curr_year = ((month - 1) ÷ 12) + 1  # which year we are in
+		
+		# 
+		if month % 12 == 0 && curr_year > waittime_year
+			extra_repayment_corr = min(
+									extra_repayment,
+									remaining_debt - amortization
+			)
+		else
+			extra_repayment_corr = 0
 		end
-	    
-		df = DataFrame(
-					"month" => months,
-					"year" => years,
-					"anfangsschuld" => anfangsschulds,
-					"zinsen" => zinsens,
-					"tilgung" => tilgungs,
-					"sondertilgung" => stilgungs,
-					"restschuld" => restschulds,
-		)
 
-		df[!, "zahlung"] = df[!, "tilgung"] + df[!, "zinsen"]
-		df[!, "datum"] =  Date.(2024 .+ df[!, "year"], ((df[!, "month"] .- 1) .% 12) .+ 1)
+		# Calculate new debt
+		remaining_debt -= amortization + extra_repayment_corr
+		 
+		# Fill dataframe
+		push!(months, month)
+		push!(years, curr_year)
+		push!(zinsens, round(interest_current_month))
+		push!(tilgungs, round(amortization))
+		push!(stilgungs, round(extra_repayment_corr))
+		push!(remaining_debts, round(remaining_debt))
 
-		return df
+		# Leave for-loop when remaining debt equals zero
+		iszero(round(remaining_debt)) && break
 	end
-
-	println("$(calc_yearly_annuity(200000, 2.0, 3.0)) jährliche Annuität")
-	println("$(calc_monthly_annuity(200000, 2.0, 3.0)) monatliche Annuität")
 	
-	tp = tilgungsplan(300000, 3, 1800, 10000, 0, 360)
-end
+	df = DataFrame(
+				"month" => months,
+				"year" => years,
+				"zinsen" => zinsens,
+				"tilgung" => tilgungs,
+				"sondertilgung" => stilgungs,
+				"restschuld" => remaining_debts,
+	)
 
-# ╔═╡ 3e2b04c5-32cd-40ed-8c32-a205aedb66d0
-13 % 13
+	df[!, "zahlung"] = df[!, "tilgung"] + df[!, "zinsen"]
+	
+	df[!, "datum"] = Date.(
+						2024 .+ df[!, "year"],
+						((df[!, "month"] .- 1) .% 12) .+ 1
+	)
+
+	return df
+end;
 
 # ╔═╡ ce5eadfa-6e55-42f8-8717-542fbbf636da
-tp
+tp = tilgungsplan(300000, 3.5, 1500, 0, 0, 360)
 
 # ╔═╡ 8ea75ae7-4483-4ce0-9051-f47610f04829
-@df tp Plots.plot(:datum, :anfangsschuld, yformatter=:plain)
+@df tp Plots.plot(:datum, :restschuld, yformatter=:plain)
 
 # ╔═╡ 5bd5c23d-b710-429a-8f68-7da5a9219740
 sum(tp[!, :zahlung] + tp[!, :sondertilgung])
 
 # ╔═╡ 43989a94-71a7-422a-911b-57b4d45e4a44
-first(filter(x -> x.restschuld == 0, tp)).year
+maximum(tp.year)
 
-# ╔═╡ c374c329-369a-4fd4-96b6-81e09f0f678f
-Date(2020, 10)
+# ╔═╡ 15699d43-b89a-48bc-ab4a-82d8edfc704d
+maximum(tp.datum)
+
+# ╔═╡ 52dd43ed-3c54-4320-9b77-e794f135b79c
+maximum(tp.month)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -132,11 +106,13 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 PlotlyBase = "a03496cd-edff-5a9b-9e67-9cda94a718b5"
+PlotlyKaleido = "f2990250-8cf9-495f-b13a-cce12b45703c"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 
 [compat]
 DataFrames = "~1.6.1"
 PlotlyBase = "~0.8.19"
+PlotlyKaleido = "~2.2.4"
 StatsPlots = "~0.15.7"
 """
 
@@ -146,7 +122,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.2"
 manifest_format = "2.0"
-project_hash = "8f46a0a0ca2f8e1e9c823c3ff67f2fd142d3e8e8"
+project_hash = "ea7e4d34863ff3a5f0d0f3af601de98ce6c774f3"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -595,6 +571,12 @@ git-tree-sha1 = "3336abae9a713d2210bb57ab484b1e065edd7d23"
 uuid = "aacddb02-875f-59d6-b918-886e6ef4fbf8"
 version = "3.0.2+0"
 
+[[deps.Kaleido_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "43032da5832754f58d14a91ffbe86d5f176acda9"
+uuid = "f7e6163d-2fa5-5f23-b69c-1db539e41963"
+version = "0.2.1+0"
+
 [[deps.KernelDensity]]
 deps = ["Distributions", "DocStringExtensions", "FFTW", "Interpolations", "StatsBase"]
 git-tree-sha1 = "fee018a29b60733876eb557804b5b109dd3dd8a7"
@@ -934,6 +916,12 @@ deps = ["ColorSchemes", "Dates", "DelimitedFiles", "DocStringExtensions", "JSON"
 git-tree-sha1 = "56baf69781fc5e61607c3e46227ab17f7040ffa2"
 uuid = "a03496cd-edff-5a9b-9e67-9cda94a718b5"
 version = "0.8.19"
+
+[[deps.PlotlyKaleido]]
+deps = ["Base64", "JSON", "Kaleido_jll"]
+git-tree-sha1 = "2650cd8fb83f73394996d507b3411a7316f6f184"
+uuid = "f2990250-8cf9-495f-b13a-cce12b45703c"
+version = "2.2.4"
 
 [[deps.Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "PrecompileTools", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "UUIDs", "UnicodeFun", "UnitfulLatexify", "Unzip"]
@@ -1581,13 +1569,12 @@ version = "1.4.1+1"
 # ╔═╡ Cell order:
 # ╠═10e28906-bd79-4620-b863-5b53748a0b31
 # ╠═aca7c180-f1f3-11ee-1836-996a32d74f59
-# ╠═6064c8bb-fdde-44e5-bf98-27bb1087bfe6
 # ╠═a6e047c7-bbd8-4189-9c92-85d127131aaa
-# ╠═3e2b04c5-32cd-40ed-8c32-a205aedb66d0
 # ╠═ce5eadfa-6e55-42f8-8717-542fbbf636da
 # ╠═8ea75ae7-4483-4ce0-9051-f47610f04829
 # ╠═5bd5c23d-b710-429a-8f68-7da5a9219740
+# ╠═52dd43ed-3c54-4320-9b77-e794f135b79c
 # ╠═43989a94-71a7-422a-911b-57b4d45e4a44
-# ╠═c374c329-369a-4fd4-96b6-81e09f0f678f
+# ╠═15699d43-b89a-48bc-ab4a-82d8edfc704d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
