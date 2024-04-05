@@ -18,16 +18,18 @@ function amortization_schedule(;
 			extra_repayment,
 			extra_repayment_waittime_years,
 	)
+	start_date = Date(year(today()), month(today())) + Dates.Month(1)
+	
 	remaining_debt = creditsum
 	interest_year_percent = nominalinterest_percent / 100
 
 	data_columns = Dict(
-		"month" => [],
-		"year" => [],
-		"interest" => [],
-		"amortization_rate" => [],
-		"extra_repayment" => [],
-		"remaining_debt" => [],
+		"month" => [0],
+		"year" => [year(start_date)],
+		"interest" => [0],
+		"amortization_rate" => [0],
+		"extra_repayment" => [0],
+		"remaining_debt" => [remaining_debt],
 	)
 
 	max_runtime_months = 12 * 100  # Should not be reached
@@ -74,10 +76,7 @@ function amortization_schedule(;
 	df[!, "payment_cumsum"] = cumsum(df[!, "payment"])	
 	df[!, "interest_cumsum"] = cumsum(df[!, "interest"])
 	
-	df[!, "date"] = Date.(
-						2024 .+ df[!, "year"],
-						((df[!, "month"] .- 1) .% 12) .+ 1
-	)
+	df[!, "date"] = Dates.Month.(df[!, "month"]) + start_date
 
 	return df
 end;
@@ -103,6 +102,7 @@ begin
 						:remaining_debt,
 						label="Remaining_debt",
 						legend=:top,
+						ticks = :native,
 						yformatter=:plain,
 	)
 	
@@ -117,6 +117,7 @@ begin
 						:payment,
 						label="Payment",
 						legend=:top,
+						ticks = :native,
 						yformatter=:plain,
 	)
 	
