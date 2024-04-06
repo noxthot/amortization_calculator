@@ -25,7 +25,7 @@ function amortization_schedule(;
 
 	data_columns = Dict(
 		"month" => [0],
-		"year" => [year(start_date)],
+		"year" => [0],
 		"interest" => [0],
 		"amortization_rate" => [0],
 		"extra_repayment" => [0],
