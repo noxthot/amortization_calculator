@@ -11,83 +11,128 @@ using DataFrames, Dates, PlotlyBase, PlotlyKaleido
 using StatsPlots; plotly()
 
 # ╔═╡ a6e047c7-bbd8-4189-9c92-85d127131aaa
-function amortization_schedule(;
-			creditsum,
-			nominalinterest_percent,
-			monthly_rate,
-			extra_repayment,
-			extra_repayment_waittime_years,
-	)
-	start_date = Date(year(today()), month(today())) + Dates.Month(1)
+begin
+	function add_cumsums!(df)
+		sort!(df, "month")
+		
+		df[!, "payment_cumsum"] = cumsum(df[!, "payment"])	
+		df[!, "interest_cumsum"] = cumsum(df[!, "interest"])
 	
-	remaining_debt = creditsum
-	interest_year_percent = nominalinterest_percent / 100
-
-	data_columns = Dict(
-		"month" => [0],
-		"year" => [0],
-		"interest" => [0],
-		"amortization_rate" => [0],
-		"extra_repayment" => [0],
-		"remaining_debt" => [remaining_debt],
-	)
-
-	max_runtime_months = 12 * 100  # Should not be reached
-	
-	for month in 1:max_runtime_months
-		# Interest to pay for current month
-		interest_current_month = remaining_debt * interest_year_percent / 12
-		
-		# payment rate
-		payment_rate = min(remaining_debt, monthly_rate)
-		amortization = payment_rate - interest_current_month
-		
-		curr_year = ((month - 1) ÷ 12) + 1  # which year we are in
-		
-		# 
-		if month % 12 == 0 && curr_year > extra_repayment_waittime_years
-			extra_repayment_corr = min(
-									extra_repayment,
-									remaining_debt - amortization
-			)
-		else
-			extra_repayment_corr = 0
-		end
-
-		# Calculate new debt
-		remaining_debt -= amortization + extra_repayment_corr
-		 
-		# Fill data columns
-		push!(data_columns["month"], month)
-		push!(data_columns["year"], curr_year)
-		push!(data_columns["interest"], round(interest_current_month))
-		push!(data_columns["amortization_rate"], round(amortization))
-		push!(data_columns["extra_repayment"], round(extra_repayment_corr))
-		push!(data_columns["remaining_debt"], round(remaining_debt))
-
-		# Leave for-loop when remaining debt equals zero
-		iszero(round(remaining_debt)) && break
+		return df
 	end
 	
-	df = DataFrame(data_columns)
-
-	df[!, "payment"] = df[!, "extra_repayment"] + df[!, "amortization_rate"] + df[!, "interest"]
+	function amortization_schedule(;
+				creditsum,
+				nominalinterest_percent,
+				monthly_rate,
+				extra_repayment,
+				extra_repayment_waittime_years,
+		)
+		start_date = Date(year(today()), month(today())) + Dates.Month(1)
+		
+		remaining_debt = creditsum
+		interest_year_percent = nominalinterest_percent / 100
 	
-	df[!, "payment_cumsum"] = cumsum(df[!, "payment"])	
-	df[!, "interest_cumsum"] = cumsum(df[!, "interest"])
+		data_columns = Dict(
+			"month" => [0],
+			"year" => [0],
+			"interest" => [0],
+			"amortization_rate" => [0],
+			"extra_repayment" => [0],
+			"remaining_debt" => [remaining_debt],
+		)
 	
-	df[!, "date"] = Dates.Month.(df[!, "month"]) + start_date
+		max_runtime_months = 12 * 100  # Should not be reached
+		
+		for month in 1:max_runtime_months
+			# Interest to pay for current month
+			interest_current_month = remaining_debt * interest_year_percent / 12
+			
+			# payment rate
+			payment_rate = min(remaining_debt, monthly_rate)
+			amortization = payment_rate - interest_current_month
+			
+			curr_year = ((month - 1) ÷ 12) + 1  # which year we are in
+			
+			# 
+			if month % 12 == 0 && curr_year > extra_repayment_waittime_years
+				extra_repayment_corr = min(
+										extra_repayment,
+										remaining_debt - amortization
+				)
+			else
+				extra_repayment_corr = 0
+			end
+	
+			# Calculate new debt
+			remaining_debt -= amortization + extra_repayment_corr
+			 
+			# Fill data columns
+			push!(data_columns["month"], month)
+			push!(data_columns["year"], curr_year)
+			push!(data_columns["interest"], round(interest_current_month))
+			push!(data_columns["amortization_rate"], round(amortization))
+			push!(data_columns["extra_repayment"], round(extra_repayment_corr))
+			push!(data_columns["remaining_debt"], round(remaining_debt))
+	
+			# Leave for-loop when remaining debt equals zero
+			iszero(round(remaining_debt)) && break
+		end
+		
+		df = DataFrame(data_columns)
+	
+		df[!, "payment"] = df[!, "extra_repayment"] + df[!, "amortization_rate"] + df[!, "interest"]
+		
+		df[!, "date"] = Dates.Month.(df[!, "month"]) + start_date
+	
+		return df
+	end
+	
+	function amortization_schedule(params::Dict)		
+		return amortization_schedule(; params...)
+	end
+	
+	function amortization_schedule(list_of_paramlists::Vector)
+		amortization_schedules = [
+									amortization_schedule(params)
+									for params in list_of_paramlists
+		]
 
-	return df
+		groupcols = [:year, :month, :date]
+		
+		return combine(
+					groupby(vcat(amortization_schedules...), groupcols),
+					Not(groupcols) .=> sum,
+					renamecols=false,
+		)
+	end
 end;
 
-# ╔═╡ ce5eadfa-6e55-42f8-8717-542fbbf636da
-df = amortization_schedule(
-		creditsum=500000,
-		nominalinterest_percent=3.5,
-		monthly_rate=1800,
-		extra_repayment=5000,
-		extra_repayment_waittime_years=0,
+# ╔═╡ 0d83d79b-ec09-4ba5-ae54-6e6bb163fcb9
+banks = Dict(
+			"bank_A" => Dict(
+							:creditsum                      => 350_000,
+							:nominalinterest_percent        => 3.6,
+							:monthly_rate                   => 1600,
+							:extra_repayment                => 10_000,
+							:extra_repayment_waittime_years => 0,
+						),
+			"bank_B" => [
+							Dict(
+								:creditsum                      => 150_000,
+								:nominalinterest_percent        => 4.6,
+								:monthly_rate                   => 1000,
+								:extra_repayment                => 16_000,
+								:extra_repayment_waittime_years => 0,
+							),
+							Dict(
+								:creditsum                      => 200_000,
+								:nominalinterest_percent        => 3.3,
+								:monthly_rate                   => 1200,
+								:extra_repayment                => 20_000,
+								:extra_repayment_waittime_years => 8,
+							),
+						]
 )
 
 # ╔═╡ 574f33fd-48f6-4c69-b688-7dae8c549631
@@ -124,6 +169,33 @@ begin
 	@df df Plots.plot!(:date, :interest, label="Interest")
 	@df df Plots.plot!(:date, :amortization_rate, label="amortization")
 end
+
+# ╔═╡ 9e1b9b2e-999c-4320-8155-ca5e59ac61df
+begin
+	df = amortization_schedule(banks["bank_B"])
+	
+	add_cumsums!(df)
+end
+
+# ╔═╡ e032e2d8-6007-48dc-8ffe-293ea6b4e54c
+# ╠═╡ disabled = true
+#=╠═╡
+df = amortization_schedule(;
+		banks["bank_A"]...
+)
+  ╠═╡ =#
+
+# ╔═╡ ce5eadfa-6e55-42f8-8717-542fbbf636da
+# ╠═╡ disabled = true
+#=╠═╡
+df = amortization_schedule(
+		creditsum=350000,
+		nominalinterest_percent=3.6,
+		monthly_rate=1600,
+		extra_repayment=10000,
+		extra_repayment_waittime_years=0,
+)
+  ╠═╡ =#
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1596,6 +1668,9 @@ version = "1.4.1+1"
 # ╠═aca7c180-f1f3-11ee-1836-996a32d74f59
 # ╠═a6e047c7-bbd8-4189-9c92-85d127131aaa
 # ╠═ce5eadfa-6e55-42f8-8717-542fbbf636da
+# ╠═e032e2d8-6007-48dc-8ffe-293ea6b4e54c
+# ╠═0d83d79b-ec09-4ba5-ae54-6e6bb163fcb9
+# ╠═9e1b9b2e-999c-4320-8155-ca5e59ac61df
 # ╟─574f33fd-48f6-4c69-b688-7dae8c549631
 # ╠═8ea75ae7-4483-4ce0-9051-f47610f04829
 # ╠═2421d2cb-384c-4928-9e21-b9bf215f5661
