@@ -4,8 +4,18 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+end
+
 # ╔═╡ 10e28906-bd79-4620-b863-5b53748a0b31
-using DataFrames, Dates, PlotlyBase, PlotlyKaleido
+using DataFrames, Dates, PlotlyBase, PlotlyKaleido, PlutoUI
 
 # ╔═╡ aca7c180-f1f3-11ee-1836-996a32d74f59
 using StatsPlots; plotly()
@@ -27,10 +37,13 @@ begin
 				monthly_rate,
 				extra_repayment,
 				extra_repayment_waittime_years,
+				yearly_extracosts,
+				start_extracosts,
+				end_extracosts,
 		)
 		start_date = Date(year(today()), month(today())) + Dates.Month(1)
 		
-		remaining_debt = creditsum
+		remaining_debt = creditsum + start_extracosts
 		interest_year_percent = nominalinterest_percent / 100
 	
 		data_columns = Dict(
@@ -49,7 +62,11 @@ begin
 			interest_current_month = remaining_debt * interest_year_percent / 12
 			
 			# payment rate
-			payment_rate = min(remaining_debt, monthly_rate)
+			payment_rate = min(
+							remaining_debt,
+							monthly_rate - (yearly_extracosts / 12),
+			)
+			
 			amortization = payment_rate - interest_current_month
 			
 			curr_year = ((month - 1) ÷ 12) + 1  # which year we are in
@@ -66,6 +83,12 @@ begin
 	
 			# Calculate new debt
 			remaining_debt -= amortization + extra_repayment_corr
+
+			without_debt = iszero(round(remaining_debt))
+
+		 	if without_debt
+				extra_repayment_corr += end_extracosts 
+			end
 			 
 			# Fill data columns
 			push!(data_columns["month"], month)
@@ -76,7 +99,7 @@ begin
 			push!(data_columns["remaining_debt"], round(remaining_debt))
 	
 			# Leave for-loop when remaining debt equals zero
-			iszero(round(remaining_debt)) && break
+			without_debt && break
 		end
 		
 		df = DataFrame(data_columns)
@@ -116,28 +139,23 @@ banks = Dict(
 							:monthly_rate                   => 1600,
 							:extra_repayment                => 10_000,
 							:extra_repayment_waittime_years => 0,
-						),
-			"bank_B" => [
-							Dict(
-								:creditsum                      => 150_000,
-								:nominalinterest_percent        => 4.6,
-								:monthly_rate                   => 1000,
-								:extra_repayment                => 16_000,
-								:extra_repayment_waittime_years => 0,
-							),
-							Dict(
-								:creditsum                      => 200_000,
-								:nominalinterest_percent        => 3.3,
-								:monthly_rate                   => 1200,
-								:extra_repayment                => 20_000,
-								:extra_repayment_waittime_years => 8,
-							),
-						]
-)
+							:yearly_extracosts              => 4 * 21.24,
+							:start_extracosts               => 800 + 115 + 86,
+							:end_extracosts                 => 173,
+			),
+# ╔═╡ 0610c3f4-a544-4e26-84c8-b75943f03d5e
+@bind selected_bank Select(collect(keys(banks)))
+
+# ╔═╡ 9e1b9b2e-999c-4320-8155-ca5e59ac61df
+begin
+	df = amortization_schedule(banks[selected_bank])
+	
+	add_cumsums!(df)
+end;
 
 # ╔═╡ 574f33fd-48f6-4c69-b688-7dae8c549631
 md"""
-Debt paid after $(maximum(df.month)) months after $(maximum(df.year)) years on $(maximum(df.date)).
+Debt paid after $(maximum(df.month)) months after $(maximum(df.year)) years on $(maximum(df.date)). Total payment: $(maximum(df.payment_cumsum))€.
 """
 
 # ╔═╡ 8ea75ae7-4483-4ce0-9051-f47610f04829
@@ -170,33 +188,6 @@ begin
 	@df df Plots.plot!(:date, :amortization_rate, label="amortization")
 end
 
-# ╔═╡ 9e1b9b2e-999c-4320-8155-ca5e59ac61df
-begin
-	df = amortization_schedule(banks["bank_B"])
-	
-	add_cumsums!(df)
-end
-
-# ╔═╡ e032e2d8-6007-48dc-8ffe-293ea6b4e54c
-# ╠═╡ disabled = true
-#=╠═╡
-df = amortization_schedule(;
-		banks["bank_A"]...
-)
-  ╠═╡ =#
-
-# ╔═╡ ce5eadfa-6e55-42f8-8717-542fbbf636da
-# ╠═╡ disabled = true
-#=╠═╡
-df = amortization_schedule(
-		creditsum=350000,
-		nominalinterest_percent=3.6,
-		monthly_rate=1600,
-		extra_repayment=10000,
-		extra_repayment_waittime_years=0,
-)
-  ╠═╡ =#
-
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
@@ -204,12 +195,14 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 PlotlyBase = "a03496cd-edff-5a9b-9e67-9cda94a718b5"
 PlotlyKaleido = "f2990250-8cf9-495f-b13a-cce12b45703c"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 
 [compat]
 DataFrames = "~1.6.1"
 PlotlyBase = "~0.8.19"
 PlotlyKaleido = "~2.2.4"
+PlutoUI = "~0.7.58"
 StatsPlots = "~0.15.7"
 """
 
@@ -219,7 +212,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.2"
 manifest_format = "2.0"
-project_hash = "ea7e4d34863ff3a5f0d0f3af601de98ce6c774f3"
+project_hash = "e8f5a56adf3837fac030a6e82b62f2f0ade059cd"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -231,6 +224,12 @@ weakdeps = ["ChainRulesCore", "Test"]
     [deps.AbstractFFTs.extensions]
     AbstractFFTsChainRulesCoreExt = "ChainRulesCore"
     AbstractFFTsTestExt = "Test"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "0f748c81756f2e5e6854298f11ad8b2dfae6911a"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.3.0"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra", "Requires"]
@@ -603,6 +602,24 @@ git-tree-sha1 = "f218fe3736ddf977e0e772bc9a586b2383da2685"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.23"
 
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "179267cfa5e712760cd43dcae385d7ea90cc25a4"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.5"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "8b72179abc660bfab5e28472e019392b97d0985c"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.4"
+
 [[deps.InlineStrings]]
 deps = ["Parsers"]
 git-tree-sha1 = "9cc2baf75c6d09f9da536ddf58eb2f29dedaf461"
@@ -831,6 +848,11 @@ git-tree-sha1 = "c1dd6d7978c12545b4179fb6153b9250c96b0075"
 uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 version = "1.0.3"
 
+[[deps.MIMEs]]
+git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+version = "0.1.4"
+
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl"]
 git-tree-sha1 = "72dc3cf284559eb8f53aa593fe62cb33f83ed0c0"
@@ -1039,6 +1061,12 @@ version = "1.40.3"
     IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
     ImageInTerminal = "d8c32880-2388-543b-8c61-d9f865259254"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "71a22244e352aa8c5f0f2adde4150f62368a3f2e"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.58"
 
 [[deps.PooledArrays]]
 deps = ["DataAPI", "Future"]
@@ -1311,6 +1339,11 @@ weakdeps = ["Random", "Test"]
 
     [deps.TranscodingStreams.extensions]
     TestExt = ["Test", "Random"]
+
+[[deps.Tricks]]
+git-tree-sha1 = "eae1bb484cd63b36999ee58be2de6c178105112f"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.8"
 
 [[deps.URIs]]
 git-tree-sha1 = "67db6cc7b3821e19ebe75791a9dd19c9b1188f2b"
