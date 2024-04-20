@@ -134,15 +134,27 @@ end;
 # ╔═╡ 0d83d79b-ec09-4ba5-ae54-6e6bb163fcb9
 banks = Dict(
 			"bank_A" => Dict(
-							:creditsum                      => 350_000,
-							:nominalinterest_percent        => 3.6,
-							:monthly_rate                   => 1600,
+							:creditsum                      => 200_000,
+							:nominalinterest_percent        => 3.9,
+							:monthly_rate                   => 1200,
 							:extra_repayment                => 10_000,
 							:extra_repayment_waittime_years => 0,
-							:yearly_extracosts              => 4 * 21.24,
-							:start_extracosts               => 800 + 115 + 86,
-							:end_extracosts                 => 173,
+							:yearly_extracosts              => 100,
+							:start_extracosts               => 3000,
+							:end_extracosts                 => 150,
 			),
+			"bank_B" => Dict(
+							:creditsum                      => 200_000,
+							:nominalinterest_percent        => 3.6,
+							:monthly_rate                   => 1100,
+							:extra_repayment                => 8000,
+							:extra_repayment_waittime_years => 1,
+							:yearly_extracosts              => 120,
+							:start_extracosts               => 5000,
+							:end_extracosts                 => 200,
+			),			
+)
+
 # ╔═╡ 0610c3f4-a544-4e26-84c8-b75943f03d5e
 @bind selected_bank Select(collect(keys(banks)))
 
