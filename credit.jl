@@ -179,9 +179,10 @@ begin
 						:date,
 						:payment,
 						label="Payment",
-						legend=:top,
+						legend=:bottom,
 						ticks = :native,
 						yformatter=:plain,
+						yaxis=:log,
 	)
 	
 	@df df Plots.plot!(:date, :interest, label="Interest")
