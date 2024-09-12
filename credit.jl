@@ -24,13 +24,13 @@ using StatsPlots; plotly()
 begin
 	function add_cumsums!(df)
 		sort!(df, "month")
-		
-		df[!, "payment_cumsum"] = cumsum(df[!, "payment"])	
+
+		df[!, "payment_cumsum"] = cumsum(df[!, "payment"])
 		df[!, "interest_cumsum"] = cumsum(df[!, "interest"])
-	
+
 		return df
 	end
-	
+
 	function amortization_schedule(;
 				creditsum,
 				nominalinterest_percent,
@@ -42,10 +42,10 @@ begin
 				end_extracosts,
 		)
 		start_date = Date(year(today()), month(today())) + Dates.Month(1)
-		
+
 		remaining_debt = creditsum + start_extracosts
 		interest_year_percent = nominalinterest_percent / 100
-	
+
 		data_columns = Dict(
 			"month" => [0],
 			"year" => [0],
@@ -54,24 +54,23 @@ begin
 			"extra_repayment" => [0],
 			"remaining_debt" => [remaining_debt],
 		)
-	
+
 		max_runtime_months = 12 * 100  # Should not be reached
-		
+
 		for month in 1:max_runtime_months
 			# Interest to pay for current month
 			interest_current_month = remaining_debt * interest_year_percent / 12
-			
+
 			# payment rate
 			payment_rate = min(
 							remaining_debt,
 							monthly_rate - (yearly_extracosts / 12),
 			)
-			
+
 			amortization = payment_rate - interest_current_month
-			
+
 			curr_year = ((month - 1) ÷ 12) + 1  # which year we are in
-			
-			# 
+
 			if month % 12 == 0 && curr_year > extra_repayment_waittime_years
 				extra_repayment_corr = min(
 										extra_repayment,
@@ -80,16 +79,16 @@ begin
 			else
 				extra_repayment_corr = 0
 			end
-	
+
 			# Calculate new debt
 			remaining_debt -= amortization + extra_repayment_corr
 
 			without_debt = iszero(round(remaining_debt))
 
 		 	if without_debt
-				extra_repayment_corr += end_extracosts 
+				extra_repayment_corr += end_extracosts
 			end
-			 
+
 			# Fill data columns
 			push!(data_columns["month"], month)
 			push!(data_columns["year"], curr_year)
@@ -97,24 +96,24 @@ begin
 			push!(data_columns["amortization_rate"], round(amortization))
 			push!(data_columns["extra_repayment"], round(extra_repayment_corr))
 			push!(data_columns["remaining_debt"], round(remaining_debt))
-	
+
 			# Leave for-loop when remaining debt equals zero
 			without_debt && break
 		end
-		
+
 		df = DataFrame(data_columns)
-	
+
 		df[!, "payment"] = df[!, "extra_repayment"] + df[!, "amortization_rate"] + df[!, "interest"]
-		
+
 		df[!, "date"] = Dates.Month.(df[!, "month"]) + start_date
-	
+
 		return df
 	end
-	
-	function amortization_schedule(params::Dict)		
+
+	function amortization_schedule(params::Dict)
 		return amortization_schedule(; params...)
 	end
-	
+
 	function amortization_schedule(list_of_paramlists::Vector)
 		amortization_schedules = [
 									amortization_schedule(params)
@@ -122,7 +121,7 @@ begin
 		]
 
 		groupcols = [:year, :month, :date]
-		
+
 		return combine(
 					groupby(vcat(amortization_schedules...), groupcols),
 					Not(groupcols) .=> sum,
@@ -161,7 +160,7 @@ banks = Dict(
 # ╔═╡ 9e1b9b2e-999c-4320-8155-ca5e59ac61df
 begin
 	df = amortization_schedule(banks[selected_bank])
-	
+
 	add_cumsums!(df)
 end;
 
@@ -180,7 +179,7 @@ begin
 						ticks = :native,
 						yformatter=:plain,
 	)
-	
+
 	@df df Plots.plot!(:date, :payment_cumsum, label="Payed")
 	@df df Plots.plot!(:date, :interest_cumsum, label="Interests")
 end
@@ -191,12 +190,11 @@ begin
 						:date,
 						:payment,
 						label="Payment",
-						legend=:bottom,
+						legend=:top,
 						ticks = :native,
 						yformatter=:plain,
-						yaxis=:log,
 	)
-	
+
 	@df df Plots.plot!(:date, :interest, label="Interest")
 	@df df Plots.plot!(:date, :amortization_rate, label="amortization")
 end
